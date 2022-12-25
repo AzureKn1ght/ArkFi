@@ -27,6 +27,7 @@ var restakes = {
   previousRestake: "",
   nextRestake: "",
 };
+var report = {};
 
 // Main Function
 const main = async () => {
@@ -54,7 +55,7 @@ const main = async () => {
   }
 
   // first time, no previous launch
-  if (!restakeExists) ARKCompound();  
+  if (!restakeExists) ARKCompound();
 };
 
 // Import wallet detail
@@ -117,41 +118,103 @@ const ARKCompound = async () => {
   const wallets = initWallets(5);
 
   // storage array for sending reports
-  let report = ["Furio Report " + todayDate()];
-  let balances = [];
+  report.title = "ArkFi Report " + todayDate();
 
   // store last compound, schedule next
   restakes.previousRestake = new Date().toString();
-  scheduleNext(new Date());
+  const date = new Date();
+  scheduleNext(date);
+
+  // alternate day compound schedule
+  const airdropDay = date.getDate % 2;
 
   // loop through for each wallet
   for (const wallet of wallets) {
     try {
-      // furvault compound
-      const vault = await compound(wallet);
-      report.push(vault);
-
-      // furpool compound wallet
-      if (wallet["index"] === 5) {
-        const pool = await furPool(wallet);
-        report.push(pool);
-      }
-
-      if (vault["balance"]) {
-        balances.push(parseFloat(vault.balance));
+      if (airdropDay) {
+        airdrop(wallet);
+      } else {
+        compound(wallet);
       }
     } catch (error) {
       console.error(error);
     }
   }
+  report.schedule = restakes;
+};
 
-  // calculate the average wallet size
-  const average = eval(balances.join("+")) / balances.length;
-  report.push({ average: average, target: "100 FUR" });
+// Compound Individual Wallet
+const airdrop = async (wallet, tries = 1.0) => {
+  try {
+    // connection using the current wallet
+    const connection = await connect(wallet);
+    const mask = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
 
-  // report status daily
-  report.push(restakes);
-  sendReport(report);
+    // set custom gasPrice
+    const overrideOptions = {
+      gasLimit: 999999,
+      gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
+    };
+
+    // call the compound function and await the results
+    const result = await connection.vault.takeAction(
+      0,
+      100,
+      0,
+      false,
+      false,
+      false,
+      overrideOptions
+    );
+    const receipt = result.wait();
+
+    // get the principal balance currently in the vault
+    const b = await connection.vault.principalBalance(wallet.address);
+    const balance = ethers.utils.formatEther(b);
+
+    // succeeded
+    if (receipt) {
+      const b = await connection.provider.getBalance(wallet.address);
+      console.log(`Wallet${wallet["index"]}: success`);
+      console.log(`Vault Balance: ${balance} ARK`);
+      const bal = ethers.utils.formatEther(b);
+
+      const success = {
+        index: wallet.index,
+        wallet: mask,
+        BNB: bal,
+        balance: balance,
+        compound: true,
+        tries: tries,
+      };
+
+      // push to status report
+      pushReport(success, true);
+      return pool(wallet);
+    }
+  } catch (error) {
+    console.log(`Wallet${wallet["index"]}: failed!`);
+    console.error(error);
+
+    // max 5 tries
+    if (tries > 5) {
+      // failed
+      const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+      const failure = {
+        index: wallet.index,
+        wallet: w,
+        compound: false,
+      };
+
+      // push to status report
+      pushReport(failure, true);
+      return pool(wallet);
+    }
+
+    // failed, retrying again...
+    console.log(`retrying(${tries})...`);
+    return await compound(wallet, ++tries);
+  }
 };
 
 // Compound Individual Wallet
@@ -168,24 +231,26 @@ const compound = async (wallet, tries = 1.0) => {
     };
 
     // call the compound function and await the results
-    const result = await connection.contract.compound(overrideOptions);
+    const result = await connection.vault.takeAction(
+      0,
+      100,
+      0,
+      false,
+      false,
+      false,
+      overrideOptions
+    );
     const receipt = result.wait();
 
-    // const receipt = await connection.provider.waitForTransaction(
-    //   result.hash,
-    //   1,
-    //   300000
-    // ); //timeout 5 mins
-
-    // get the total balance currently locked in the vault
-    const b = await connection.contract.participantBalance(wallet.address);
+    // get the principal balance currently in the vault
+    const b = await connection.vault.principalBalance(wallet.address);
     const balance = ethers.utils.formatEther(b);
 
     // succeeded
     if (receipt) {
       const b = await connection.provider.getBalance(wallet.address);
       console.log(`Wallet${wallet["index"]}: success`);
-      console.log(`Vault Balance: ${balance} FUR`);
+      console.log(`Vault Balance: ${balance} ARK`);
       const bal = ethers.utils.formatEther(b);
 
       const success = {
@@ -197,7 +262,9 @@ const compound = async (wallet, tries = 1.0) => {
         tries: tries,
       };
 
-      return success;
+      // push to status report
+      pushReport(success, true);
+      return pool(wallet);
     }
   } catch (error) {
     console.log(`Wallet${wallet["index"]}: failed!`);
@@ -213,7 +280,9 @@ const compound = async (wallet, tries = 1.0) => {
         compound: false,
       };
 
-      return failure;
+      // push to status report
+      pushReport(failure, true);
+      return pool(wallet);
     }
 
     // failed, retrying again...
@@ -222,8 +291,8 @@ const compound = async (wallet, tries = 1.0) => {
   }
 };
 
-// Furpool Compound Function
-const furPool = async (wallet, tries = 1.0) => {
+// Pool Withdrawal Function
+const pool = async (wallet, tries = 1.0) => {
   try {
     // connection using the current wallet
     const connection = await connect(wallet);
@@ -234,55 +303,68 @@ const furPool = async (wallet, tries = 1.0) => {
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
 
-    // call the compound function and await the results
-    const result = await connection.furpool.compound(overrideOptions);
+    // claim all the daily rewards from the Ark BOND pool
+    const result = await connection.pool.claimBondRewards(overrideOptions);
     const receipt = result.wait();
 
-    // const receipt = await connection.provider.waitForTransaction(
-    //   result.hash,
-    //   1,
-    //   300000
-    // ); //timeout 5 mins
-
-    // get the total balance and duration locked in the vault
-    const t = await connection.furpool.getRemainingLockedTime(wallet.address);
-    const b = await connection.furpool.stakingAmountInUsdc(wallet.address);
+    // get the total balance locked in BOND pool
+    const b = await connection.vault.getBondValue(wallet.address);
     const balance = ethers.utils.formatEther(b);
-    const time = Number(t) / (3600 * 24);
 
     // succeeded
     if (receipt) {
-      console.log(`Furpool: success`);
-      console.log(`Balance: ${balance} USDC`);
+      console.log(`BOND: success`);
+      console.log(`Balance: ${balance} BUSD`);
 
       const success = {
-        type: "Furpool",
+        type: "Pool",
         balance: balance,
-        locked: `${time} days`,
-        compound: true,
+        withdrawn: true,
         tries: tries,
       };
 
-      return success;
+      return pushReport(success);
     }
   } catch (error) {
-    console.log(`Furpool: failed`);
+    console.log(`BOND: failed`);
     console.error(error);
 
     // max 5 tries
     if (tries > 5) {
       // failed
       const fail = {
-        type: "Furpool",
-        compound: false,
+        type: "Pool",
+        withdrawn: false,
       };
 
-      return fail;
+      return pushReport(fail);
     }
 
     // failed, retrying again...
     console.log(`retrying(${tries})...`);
-    return await furPool(wallet, ++tries);
+    return await pool(wallet, ++tries);
+  }
+};
+
+// Report Builder Function
+const pushReport = (obj, action = false) => {
+  // declare the arrays if doesn't exist
+  if (!report.actions) report.actions = [];
+  if (!report.bonds) report.bonds = [];
+
+  // push the object into the report
+  if (action) report.actions.push(obj);
+  else report.bonds.push(obj);
+
+  // send the daily report via email once all actions are done
+  if (report.actions.length === 5 && report.bonds.length === 5) {
+    // if (vault["balance"]) {
+    //   balances.push(parseFloat(vault.balance));
+    // }
+    // // calculate the average wallet size
+    // const average = eval(balances.join("+")) / balances.length;
+    // report.push({ average: average, target: "100 FUR" });
+    sendReport();
   }
 };
 
@@ -294,7 +376,7 @@ const scheduleNext = async (nextDate) => {
   console.log("Next Restake: ", nextDate);
 
   // schedule next restake
-  scheduler.scheduleJob(nextDate, FURCompound);
+  scheduler.scheduleJob(nextDate, ARKCompound);
   storeData();
   return;
 };
@@ -311,13 +393,19 @@ const storeData = async () => {
   });
 };
 
-// Get Furio Price Function
-const furioPrice = async () => {
+// Get Ark Price Function
+const arkPrice = async () => {
   try {
-    const url_string = process.env.PRICE_API;
-    const response = await fetch(url_string);
-    const price = await response.json();
-    return price;
+    // just initialize connection
+    const wallets = initWallets(1);
+    const connection = await connect(wallets[0]);
+
+    // get the price of Ark from pool
+    const rawPrice = await connection.pool.getCurrentPriceInUSD();
+    let price = ethers.utils.formatEther(rawPrice);
+    price = Number(price).toFixed(2);
+
+    return { ARK: price };
   } catch (error) {
     console.error(error);
   }
@@ -333,14 +421,13 @@ const todayDate = () => {
 };
 
 // Send Report Function
-const sendReport = async (report) => {
+const sendReport = async () => {
   // get the formatted date
   const today = todayDate();
 
   // get price of Furio
-  const price = await furioPrice();
-  report.push(price);
-  console.log(report);
+  const price = await arkPrice();
+  report.price = price;
 
   // configure email server
   const transporter = nodemailer.createTransport({
@@ -355,7 +442,7 @@ const sendReport = async (report) => {
   const mailOptions = {
     from: process.env.EMAIL_ADDR,
     to: process.env.RECIPIENT,
-    subject: "Furio Report: " + today,
+    subject: "ArkFi Report: " + today,
     text: JSON.stringify(report, null, 2),
   };
 
@@ -367,6 +454,9 @@ const sendReport = async (report) => {
       console.log("Email sent: " + info.response);
     }
   });
+
+  // clear var
+  report = {};
 };
 
 main();

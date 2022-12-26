@@ -132,9 +132,9 @@ const ARKCompound = async () => {
   for (const wallet of wallets) {
     try {
       if (airdropDay) {
-        airdrop(wallet);
-      } else {
         compound(wallet);
+      } else {
+        airdrop(wallet);
       }
     } catch (error) {
       console.error(error);
@@ -156,41 +156,52 @@ const airdrop = async (wallet, tries = 1.0) => {
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
 
-    // call the compound function and await the results
+    // call the action function and await the results
     const result = await connection.vault.takeAction(
       0,
-      100,
       0,
+      100,
       false,
       false,
       false,
       overrideOptions
     );
-    const receipt = result.wait();
+    const withdrawn = await result.wait();
 
     // get the principal balance currently in the vault
     const b = await connection.vault.principalBalance(wallet.address);
     const balance = ethers.utils.formatEther(b);
 
     // succeeded
-    if (receipt) {
-      const b = await connection.provider.getBalance(wallet.address);
-      console.log(`Wallet${wallet["index"]}: success`);
-      console.log(`Vault Balance: ${balance} ARK`);
-      const bal = ethers.utils.formatEther(b);
+    if (withdrawn) {
+      const val = await connection.vault.airdropBalance(wallet.address);
+      console.log("Airdrop: " + val.toString());
+      const addresses = [wallet.downline];
+      const amounts = [val];
 
-      const success = {
-        index: wallet.index,
-        wallet: mask,
-        BNB: bal,
-        balance: balance,
-        compound: true,
-        tries: tries,
-      };
+      // call the airdrop function and await the results
+      const result = await connection.vault.airdrop(addresses, amounts, overrideOptions);
+      const airdropped = await result.wait();
 
-      // push to status report
-      pushReport(success, true);
-      return pool(wallet);
+      if (airdropped) {
+        const b = await connection.provider.getBalance(wallet.address);
+        console.log(`Wallet${wallet["index"]}: success`);
+        console.log(`Vault Balance: ${balance} ARK`);
+        const bal = ethers.utils.formatEther(b);
+
+        const success = {
+          index: wallet.index,
+          wallet: mask,
+          BNB: bal,
+          balance: balance,
+          airdrop: true,
+          tries: tries,
+        };
+
+        // push to status report
+        pushReport(success, true);
+        return pool(wallet);
+      }
     }
   } catch (error) {
     console.log(`Wallet${wallet["index"]}: failed!`);
@@ -203,7 +214,7 @@ const airdrop = async (wallet, tries = 1.0) => {
       const failure = {
         index: wallet.index,
         wallet: w,
-        compound: false,
+        airdrop: false,
       };
 
       // push to status report
@@ -213,7 +224,7 @@ const airdrop = async (wallet, tries = 1.0) => {
 
     // failed, retrying again...
     console.log(`retrying(${tries})...`);
-    return await compound(wallet, ++tries);
+    return await airdrop(wallet, ++tries);
   }
 };
 
@@ -240,7 +251,7 @@ const compound = async (wallet, tries = 1.0) => {
       false,
       overrideOptions
     );
-    const receipt = result.wait();
+    const receipt = await result.wait();
 
     // get the principal balance currently in the vault
     const b = await connection.vault.principalBalance(wallet.address);
@@ -305,7 +316,7 @@ const pool = async (wallet, tries = 1.0) => {
 
     // claim all the daily rewards from the Ark BOND pool
     const result = await connection.pool.claimBondRewards(overrideOptions);
-    const receipt = result.wait();
+    const receipt = await result.wait();
 
     // get the total balance locked in BOND pool
     const b = await connection.vault.getBondValue(wallet.address);
@@ -317,6 +328,7 @@ const pool = async (wallet, tries = 1.0) => {
       console.log(`Balance: ${balance} BUSD`);
 
       const success = {
+        index: wallet.index,
         type: "Pool",
         balance: balance,
         withdrawn: true,
@@ -333,6 +345,7 @@ const pool = async (wallet, tries = 1.0) => {
     if (tries > 5) {
       // failed
       const fail = {
+        index: wallet.index,
         type: "Pool",
         withdrawn: false,
       };

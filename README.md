@@ -1,5 +1,5 @@
 # Ark Compound
-![ArkFi](https://2766867408-files.gitbook.io/~/files/v0/b/gitbook-x-prod.appspot.com/o/spaces%2F6nh6OlIKrTsQ9mEyH4ZC%2Fuploads%2FoH5NgcyOzsb2InARWvd8%2FA_Logo_Cover02-01.png?alt=media&token=b2d7b8b8-5ddf-41e5-9273-20bef8d9fba5)
+![ArkFi](https://www.arkfi.io/img/og_image.png)
 
 
 ## Strategy 
@@ -17,7 +17,7 @@ You will need to create a file called *.env* in the root directory, copy the tex
 # How to Run 
 You could run it on your desktop just using [Node.js](https://github.com/nodejs/node) in your terminal. However, on a production environment, it is recommended to use something like [PM2](https://github.com/Unitech/pm2) to run the processes to ensure robust uptime and management. 
 
-### FUR Compound
+### ARK Compound
 ```
 pm2 start arkfi.js -n "ARK"
 pm2 save

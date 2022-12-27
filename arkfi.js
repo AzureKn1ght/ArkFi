@@ -126,15 +126,15 @@ const ARKCompound = async () => {
   scheduleNext(date);
 
   // alternate day compound schedule
-  const airdropDay = date.getDate % 2;
+  const airdropDay = date.getDate() % 2;
 
   // loop through for each wallet
   for (const wallet of wallets) {
     try {
       if (airdropDay) {
-        compound(wallet);
-      } else {
         airdrop(wallet);
+      } else {
+        compound(wallet);
       }
     } catch (error) {
       console.error(error);
@@ -180,7 +180,11 @@ const airdrop = async (wallet, tries = 1.0) => {
       const amounts = [val];
 
       // call the airdrop function and await the results
-      const result = await connection.vault.airdrop(addresses, amounts, overrideOptions);
+      const result = await connection.vault.airdrop(
+        addresses,
+        amounts,
+        overrideOptions
+      );
       const airdropped = await result.wait();
 
       if (airdropped) {
@@ -313,6 +317,7 @@ const pool = async (wallet, tries = 1.0) => {
       gasLimit: 999999,
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
+    const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
 
     // claim all the daily rewards from the Ark BOND pool
     const result = await connection.pool.claimBondRewards(overrideOptions);
@@ -324,11 +329,13 @@ const pool = async (wallet, tries = 1.0) => {
 
     // succeeded
     if (receipt) {
+      console.log(`Wallet${wallet["index"]}`);
       console.log(`BOND: success`);
       console.log(`Balance: ${balance} BUSD`);
 
       const success = {
         index: wallet.index,
+        wallet: w,
         type: "Pool",
         balance: balance,
         withdrawn: true,
@@ -338,6 +345,7 @@ const pool = async (wallet, tries = 1.0) => {
       return pushReport(success);
     }
   } catch (error) {
+    const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
     console.log(`BOND: failed`);
     console.error(error);
 
@@ -346,6 +354,7 @@ const pool = async (wallet, tries = 1.0) => {
       // failed
       const fail = {
         index: wallet.index,
+        wallet: w,
         type: "Pool",
         withdrawn: false,
       };
@@ -369,16 +378,19 @@ const pushReport = (obj, action = false) => {
   if (action) report.actions.push(obj);
   else report.bonds.push(obj);
 
-  // send the daily report via email once all actions are done
-  if (report.actions.length === 5 && report.bonds.length === 5) {
-    // if (vault["balance"]) {
-    //   balances.push(parseFloat(vault.balance));
-    // }
-    // // calculate the average wallet size
-    // const average = eval(balances.join("+")) / balances.length;
-    // report.push({ average: average, target: "100 FUR" });
+  // send the daily report via email
+  if (report.actions.length === 5) {
+    let balances = [];
+    for (const action of report.actions) {
+      if (action.balance) balances.push(parseFloat(action.balance));
+    }
+    const average = eval(balances.join("+")) / balances.length;
+    report.consolidated = { average: average, target: "300 ARK" };
     sendReport();
   }
+
+  // send another report if/when all is done
+  if (report.bonds.length === 5) sendReport();
 };
 
 // Job Scheduler Function
@@ -437,6 +449,7 @@ const todayDate = () => {
 const sendReport = async () => {
   // get the formatted date
   const today = todayDate();
+  report.title = "ArkFi Report " + today;
 
   // get price of Furio
   const price = await arkPrice();

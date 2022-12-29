@@ -119,6 +119,9 @@ const ARKCompound = async () => {
 
   // storage array for sending reports
   report.title = "ArkFi Report " + todayDate();
+  report.actions = [];
+  report.bonds = [];
+  let balances = [];
 
   // store last compound, schedule next
   restakes.previousRestake = new Date().toString();
@@ -132,15 +135,42 @@ const ARKCompound = async () => {
   for (const wallet of wallets) {
     try {
       if (airdropDay) {
-        airdrop(wallet);
+        report.mode = "airdrop";
+        const action = await airdrop(wallet);
+        report.actions.push(action);
+
+        balances.push(parseFloat(action.balance));
       } else {
-        compound(wallet);
+        report.mode = "compound";
+        const action = await compound(wallet);
+        report.actions.push(action);
+
+        balances.push(parseFloat(action.balance));
       }
+      const bond = await pool(wallet);
+      report.bonds.push(bond);
     } catch (error) {
       console.error(error);
     }
   }
+
+  // execute the BONDs separately
+  for (const wallet of wallets) {
+    try {
+      const bond = await pool(wallet);
+      report.bonds.push(bond);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  // calculate the average wallet size
+  const average = eval(balances.join("+")) / balances.length;
+  report.consolidated = { average: average, target: "300 ARK" };
+
+  // report status daily
   report.schedule = restakes;
+  sendReport();
 };
 
 // Compound Individual Wallet
@@ -202,9 +232,8 @@ const airdrop = async (wallet, tries = 1.0) => {
           tries: tries,
         };
 
-        // push to status report
-        pushReport(success, true);
-        return pool(wallet);
+        // return status
+        return success;
       }
     }
   } catch (error) {
@@ -221,9 +250,8 @@ const airdrop = async (wallet, tries = 1.0) => {
         airdrop: false,
       };
 
-      // push to status report
-      pushReport(failure, true);
-      return pool(wallet);
+      // return status
+      return failure;
     }
 
     // failed, retrying again...
@@ -277,9 +305,8 @@ const compound = async (wallet, tries = 1.0) => {
         tries: tries,
       };
 
-      // push to status report
-      pushReport(success, true);
-      return pool(wallet);
+      // return status
+      return success;
     }
   } catch (error) {
     console.log(`Wallet${wallet["index"]}: failed!`);
@@ -295,9 +322,8 @@ const compound = async (wallet, tries = 1.0) => {
         compound: false,
       };
 
-      // push to status report
-      pushReport(failure, true);
-      return pool(wallet);
+      // return status
+      return failure;
     }
 
     // failed, retrying again...
@@ -329,8 +355,7 @@ const pool = async (wallet, tries = 1.0) => {
 
     // succeeded
     if (receipt) {
-      console.log(`Wallet${wallet["index"]}`);
-      console.log(`BOND: success`);
+      console.log(`BOND${wallet["index"]}: success`);
       console.log(`Balance: ${balance} BUSD`);
 
       const success = {
@@ -342,11 +367,11 @@ const pool = async (wallet, tries = 1.0) => {
         tries: tries,
       };
 
-      return pushReport(success);
+      return success;
     }
   } catch (error) {
     const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
-    console.log(`BOND: failed`);
+    console.log(`BOND${wallet["index"]}: failed`);
     console.error(error);
 
     // max 5 tries
@@ -359,7 +384,7 @@ const pool = async (wallet, tries = 1.0) => {
         withdrawn: false,
       };
 
-      return pushReport(fail);
+      return fail;
     }
 
     // failed, retrying again...
@@ -368,30 +393,30 @@ const pool = async (wallet, tries = 1.0) => {
   }
 };
 
-// Report Builder Function
-const pushReport = (obj, action = false) => {
-  // declare the arrays if doesn't exist
-  if (!report.actions) report.actions = [];
-  if (!report.bonds) report.bonds = [];
+// // Report Builder Function
+// const pushReport = (obj, action = false) => {
+//   // declare the arrays if doesn't exist
+//   if (!report.actions) report.actions = [];
+//   if (!report.bonds) report.bonds = [];
 
-  // push the object into the report
-  if (action) report.actions.push(obj);
-  else report.bonds.push(obj);
+//   // push the object into the report
+//   if (action) report.actions.push(obj);
+//   else report.bonds.push(obj);
 
-  // send the daily report via email
-  if (report.actions.length === 5) {
-    let balances = [];
-    for (const action of report.actions) {
-      if (action.balance) balances.push(parseFloat(action.balance));
-    }
-    const average = eval(balances.join("+")) / balances.length;
-    report.consolidated = { average: average, target: "300 ARK" };
-    sendReport();
-  }
+//   // send the daily report via email
+//   if (report.actions.length === 5) {
+//     let balances = [];
+//     for (const action of report.actions) {
+//       if (action.balance) balances.push(parseFloat(action.balance));
+//     }
+//     const average = eval(balances.join("+")) / balances.length;
+//     report.consolidated = { average: average, target: "300 ARK" };
+//     sendReport();
+//   }
 
-  // send another report if/when all is done
-  if (report.bonds.length === 5) sendReport();
-};
+//   // send another report if/when all is done
+//   if (report.bonds.length === 5) sendReport();
+// };
 
 // Job Scheduler Function
 const scheduleNext = async (nextDate) => {

@@ -147,8 +147,6 @@ const ARKCompound = async () => {
 
         balances.push(parseFloat(action.balance));
       }
-      const bond = await pool(wallet);
-      report.bonds.push(bond);
     } catch (error) {
       console.error(error);
     }

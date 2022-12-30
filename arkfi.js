@@ -157,6 +157,10 @@ const ARKCompound = async () => {
     try {
       const bond = await pool(wallet);
       report.bonds.push(bond);
+      // refresh pendings
+      if (airdropDay) {
+        await compound(wallet);
+      }
     } catch (error) {
       console.error(error);
     }

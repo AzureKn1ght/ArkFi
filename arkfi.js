@@ -134,13 +134,16 @@ const ARKCompound = async () => {
   // loop through for each wallet
   for (const wallet of wallets) {
     try {
+      console.log(`-Wallet ${wallet["index"]}-`);
       if (airdropDay) {
+        console.log("Airdrop...");
         report.mode = "airdrop";
         const action = await airdrop(wallet);
         report.actions.push(action);
 
         balances.push(parseFloat(action.balance));
       } else {
+        console.log("Compound...");
         report.mode = "compound";
         const action = await compound(wallet);
         report.actions.push(action);
@@ -197,7 +200,12 @@ const airdrop = async (wallet, tries = 1.0) => {
       false,
       overrideOptions
     );
-    const withdrawn = await result.wait();
+    const withdrawn = await connection.provider.waitForTransaction(
+      result.hash,
+      1,
+      300000 * tries
+    );
+    //const withdrawn = await result.wait();
 
     // get the principal balance currently in the vault
     const b = await connection.vault.principalBalance(wallet.address);
@@ -284,7 +292,12 @@ const compound = async (wallet, tries = 1.0) => {
       false,
       overrideOptions
     );
-    const receipt = await result.wait();
+    const receipt = await connection.provider.waitForTransaction(
+      result.hash,
+      1,
+      300000 * tries
+    );
+    //const receipt = await result.wait();
 
     // get the principal balance currently in the vault
     const b = await connection.vault.principalBalance(wallet.address);
@@ -348,7 +361,12 @@ const pool = async (wallet, tries = 1.0) => {
 
     // claim all the daily rewards from the Ark BOND pool
     const result = await connection.pool.claimBondRewards(overrideOptions);
-    const receipt = await result.wait();
+    const receipt = await connection.provider.waitForTransaction(
+      result.hash,
+      1,
+      300000 * tries
+    );
+    //const receipt = await result.wait();
 
     // get the total balance locked in BOND pool
     const b = await connection.vault.getBondValue(wallet.address);
@@ -473,42 +491,46 @@ const todayDate = () => {
 
 // Send Report Function
 const sendReport = async () => {
-  // get the formatted date
-  const today = todayDate();
-  report.title = "ArkFi Report " + today;
+  try {
+    // get the formatted date
+    const today = todayDate();
+    report.title = "ArkFi Report " + today;
 
-  // get price of Furio
-  const price = await arkPrice();
-  report.price = price;
+    // get price of Furio
+    const price = await arkPrice();
+    report.price = price;
 
-  // configure email server
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_ADDR,
-      pass: process.env.EMAIL_PW,
-    },
-  });
+    // configure email server
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_ADDR,
+        pass: process.env.EMAIL_PW,
+      },
+    });
 
-  // setup mail params
-  const mailOptions = {
-    from: process.env.EMAIL_ADDR,
-    to: process.env.RECIPIENT,
-    subject: "ArkFi Report: " + today,
-    text: JSON.stringify(report, null, 2),
-  };
+    // setup mail params
+    const mailOptions = {
+      from: process.env.EMAIL_ADDR,
+      to: process.env.RECIPIENT,
+      subject: "ArkFi Report: " + today,
+      text: JSON.stringify(report, null, 2),
+    };
 
-  // send the email message
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log("Email sent: " + info.response);
-    }
-  });
+    // send the email message
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.log(error);
+      } else {
+        console.log("Email sent: " + info.response);
+      }
+    });
 
-  // clear var
-  report = {};
+    // clear var
+    report = {};
+  } catch (error) {
+    console.error(error);
+  }
 };
 
 main();

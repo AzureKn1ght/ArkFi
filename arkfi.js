@@ -157,14 +157,13 @@ const ARKCompound = async () => {
     try {
       const bond = await pool(wallet);
       report.bonds.push(bond);
-      // refresh pendings
-      if (airdropDay) {
-        await compound(wallet);
-      }
     } catch (error) {
       console.error(error);
     }
   }
+
+  // refresh the first wallet after airdrop
+  if (airdropDay) await compound(wallets[0]);
 
   // calculate the average wallet size
   const average = eval(balances.join("+")) / balances.length;

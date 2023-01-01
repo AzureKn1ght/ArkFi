@@ -128,7 +128,7 @@ const ARKCompound = async () => {
   const date = new Date();
   scheduleNext(date);
 
-  // alternate day compound schedule
+  // compound on alternate day  schedule
   const airdropDay = date.getDate() % 2;
 
   // loop through for each wallet
@@ -183,9 +183,11 @@ const airdrop = async (wallet, tries = 1.0) => {
     // connection using the current wallet
     const connection = await connect(wallet);
     const mask = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+    const nonce = await connection.provider.getTransactionCount(wallet.address);
 
     // set custom gasPrice
     const overrideOptions = {
+      nonce: nonce,
       gasLimit: 999999,
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
@@ -203,7 +205,7 @@ const airdrop = async (wallet, tries = 1.0) => {
     const withdrawn = await connection.provider.waitForTransaction(
       result.hash,
       1,
-      300000 * tries
+      300000
     );
     //const withdrawn = await result.wait();
 
@@ -219,11 +221,7 @@ const airdrop = async (wallet, tries = 1.0) => {
       const amounts = [val];
 
       // call the airdrop function and await the results
-      const result = await connection.vault.airdrop(
-        addresses,
-        amounts,
-        overrideOptions
-      );
+      const result = await connection.vault.airdrop(addresses, amounts);
       const airdropped = await result.wait();
 
       if (airdropped) {
@@ -275,9 +273,11 @@ const compound = async (wallet, tries = 1.0) => {
     // connection using the current wallet
     const connection = await connect(wallet);
     const mask = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+    const nonce = await connection.provider.getTransactionCount(wallet.address);
 
     // set custom gasPrice
     const overrideOptions = {
+      nonce: nonce,
       gasLimit: 999999,
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
@@ -295,7 +295,7 @@ const compound = async (wallet, tries = 1.0) => {
     const receipt = await connection.provider.waitForTransaction(
       result.hash,
       1,
-      300000 * tries
+      300000
     );
     //const receipt = await result.wait();
 
@@ -351,9 +351,11 @@ const pool = async (wallet, tries = 1.0) => {
   try {
     // connection using the current wallet
     const connection = await connect(wallet);
+    const nonce = await connection.provider.getTransactionCount(wallet.address);
 
     // set custom gasPrice
     const overrideOptions = {
+      nonce: nonce,
       gasLimit: 999999,
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
@@ -364,7 +366,7 @@ const pool = async (wallet, tries = 1.0) => {
     const receipt = await connection.provider.waitForTransaction(
       result.hash,
       1,
-      300000 * tries
+      300000
     );
     //const receipt = await result.wait();
 
@@ -477,6 +479,7 @@ const arkPrice = async () => {
     return { ARK: price };
   } catch (error) {
     console.error(error);
+    return null;
   }
 };
 

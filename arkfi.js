@@ -122,6 +122,7 @@ const ARKCompound = async () => {
   report.actions = [];
   report.bonds = [];
   let balances = [];
+  let promises = [];
 
   // store last compound, schedule next
   restakes.previousRestake = new Date().toString();
@@ -133,40 +134,46 @@ const ARKCompound = async () => {
 
   // loop through for each wallet
   for (const wallet of wallets) {
+    if (airdropDay) {
+      const action = airdrop(wallet);
+      report.mode = "airdrop";
+      promises.push(action);
+    } else {
+      const action = compound(wallet);
+      report.mode = "compound";
+      promises.push(action);
+    }
+  }
+
+  // wait for all the promises to finish resolving
+  const results = await Promise.allSettled(promises);
+  for (const result of results) {
     try {
-      console.log(`-Wallet ${wallet["index"]}-`);
-      if (airdropDay) {
-        console.log("Airdrop...");
-        report.mode = "airdrop";
-        const action = await airdrop(wallet);
-        report.actions.push(action);
-
-        balances.push(parseFloat(action.balance));
-      } else {
-        console.log("Compound...");
-        report.mode = "compound";
-        const action = await compound(wallet);
-        report.actions.push(action);
-
-        balances.push(parseFloat(action.balance));
-      }
+      const action = result.value;
+      report.actions.push(action);
+      balances.push(parseFloat(action.balance));
     } catch (error) {
       console.error(error);
     }
   }
+  promises = [];
 
-  // execute the BONDs separately
+  // execute the BONDs afterwards
   for (const wallet of wallets) {
+    const bond = pool(wallet);
+    promises.push(bond);
+  }
+
+  // wait for the BONDs promises to finish resolving
+  const settles = await Promise.allSettled(promises);
+  for (const result of settles) {
     try {
-      const bond = await pool(wallet);
+      const bond = result.value;
       report.bonds.push(bond);
     } catch (error) {
       console.error(error);
     }
   }
-
-  // refresh the first wallet after airdrop
-  if (airdropDay) await compound(wallets[0]);
 
   // calculate the average wallet size
   const average = eval(balances.join("+")) / balances.length;
@@ -180,10 +187,14 @@ const ARKCompound = async () => {
 // Compound Individual Wallet
 const airdrop = async (wallet, tries = 1.0) => {
   try {
+    console.log(`- Wallet ${wallet["index"]} -`);
+    console.log("Airdroping...");
+
     // connection using the current wallet
     const connection = await connect(wallet);
     const mask = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
     const nonce = await connection.provider.getTransactionCount(wallet.address);
+    const m = Math.floor((60 * 60000) / tries);
 
     // set custom gasPrice
     const overrideOptions = {
@@ -205,7 +216,7 @@ const airdrop = async (wallet, tries = 1.0) => {
     const withdrawn = await connection.provider.waitForTransaction(
       result.hash,
       1,
-      300000
+      m
     );
     //const withdrawn = await result.wait();
 
@@ -270,10 +281,14 @@ const airdrop = async (wallet, tries = 1.0) => {
 // Compound Individual Wallet
 const compound = async (wallet, tries = 1.0) => {
   try {
+    console.log(`- Wallet ${wallet["index"]} -`);
+    console.log("Compounding...");
+
     // connection using the current wallet
     const connection = await connect(wallet);
     const mask = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
     const nonce = await connection.provider.getTransactionCount(wallet.address);
+    const m = Math.floor((60 * 60000) / tries);
 
     // set custom gasPrice
     const overrideOptions = {
@@ -295,7 +310,7 @@ const compound = async (wallet, tries = 1.0) => {
     const receipt = await connection.provider.waitForTransaction(
       result.hash,
       1,
-      300000
+      m
     );
     //const receipt = await result.wait();
 
@@ -349,6 +364,9 @@ const compound = async (wallet, tries = 1.0) => {
 // Pool Withdrawal Function
 const pool = async (wallet, tries = 1.0) => {
   try {
+    console.log(`- Wallet ${wallet["index"]} -`);
+    console.log("Claim Bonds...");
+
     // connection using the current wallet
     const connection = await connect(wallet);
     const nonce = await connection.provider.getTransactionCount(wallet.address);
@@ -360,13 +378,14 @@ const pool = async (wallet, tries = 1.0) => {
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
     const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+    const m = Math.floor((60 * 60000) / tries);
 
     // claim all the daily rewards from the Ark BOND pool
     const result = await connection.pool.claimBondRewards(overrideOptions);
     const receipt = await connection.provider.waitForTransaction(
       result.hash,
       1,
-      300000
+      m
     );
     //const receipt = await result.wait();
 

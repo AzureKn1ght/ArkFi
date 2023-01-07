@@ -151,7 +151,9 @@ const ARKCompound = async () => {
     try {
       const action = result.value;
       report.actions.push(action);
-      balances.push(parseFloat(action.balance));
+      if (action.balance) {
+        balances.push(parseFloat(action.balance));
+      }
     } catch (error) {
       console.error(error);
     }
@@ -199,7 +201,7 @@ const airdrop = async (wallet, tries = 1.0) => {
     // set custom gasPrice
     const overrideOptions = {
       nonce: nonce,
-      gasLimit: 999999,
+      gasLimit: Math.floor(2000000 / tries),
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
 
@@ -293,7 +295,7 @@ const compound = async (wallet, tries = 1.0) => {
     // set custom gasPrice
     const overrideOptions = {
       nonce: nonce,
-      gasLimit: 999999,
+      gasLimit: Math.floor(2000000 / tries),
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
 
@@ -374,7 +376,7 @@ const pool = async (wallet, tries = 1.0) => {
     // set custom gasPrice
     const overrideOptions = {
       nonce: nonce,
-      gasLimit: 999999,
+      gasLimit: Math.floor(2000000 / tries),
       gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
     };
     const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);

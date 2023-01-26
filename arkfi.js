@@ -224,7 +224,9 @@ const airdrop = async (wallet, tries = 1.0) => {
 
     // get the principal balance currently in the vault
     const b = await connection.vault.principalBalance(wallet.address);
+    const n = await connection.vault.checkNdv(wallet.address);
     const balance = ethers.utils.formatEther(b);
+    const ndv = ethers.utils.formatEther(n);
 
     // succeeded
     if (withdrawn) {
@@ -248,6 +250,7 @@ const airdrop = async (wallet, tries = 1.0) => {
           wallet: mask,
           BNB: bal,
           balance: balance,
+          ndv: ndv,
           airdrop: true,
           tries: tries,
         };
@@ -268,6 +271,7 @@ const airdrop = async (wallet, tries = 1.0) => {
         index: wallet.index,
         wallet: w,
         airdrop: false,
+        error: error,
       };
 
       // return status
@@ -318,7 +322,9 @@ const compound = async (wallet, tries = 1.0) => {
 
     // get the principal balance currently in the vault
     const b = await connection.vault.principalBalance(wallet.address);
+    const n = await connection.vault.checkNdv(wallet.address);
     const balance = ethers.utils.formatEther(b);
+    const ndv = ethers.utils.formatEther(n);
 
     // succeeded
     if (receipt) {
@@ -332,6 +338,7 @@ const compound = async (wallet, tries = 1.0) => {
         wallet: mask,
         BNB: bal,
         balance: balance,
+        ndv: ndv,
         compound: true,
         tries: tries,
       };
@@ -351,6 +358,7 @@ const compound = async (wallet, tries = 1.0) => {
         index: wallet.index,
         wallet: w,
         compound: false,
+        error: error,
       };
 
       // return status

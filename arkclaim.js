@@ -160,17 +160,17 @@ const ARKCompound = async () => {
 const claim = async (wallet, tries = 1.0) => {
   const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
   try {
+    // connection using the current wallet
+    const connection = await connect(wallet);
+    const nonce = await connection.provider.getTransactionCount(wallet.address);
+    const m = Math.floor((60 * 60000) / tries);
+
     // claim if NDV is enough, else do compounding
     let n = await connection.vault.checkNdv(wallet.address);
     let ndv = Number(ethers.utils.formatEther(n));
     if (ndv < 10) return await compound(wallet);
     console.log(`- Wallet ${wallet["index"]} -`);
     console.log("Claiming...");
-
-    // connection using the current wallet
-    const connection = await connect(wallet);
-    const nonce = await connection.provider.getTransactionCount(wallet.address);
-    const m = Math.floor((60 * 60000) / tries);
 
     // set custom gasPrice
     const overrideOptions = {
@@ -194,6 +194,7 @@ const claim = async (wallet, tries = 1.0) => {
       1,
       m
     );
+    const url = "https://bscscan.com/tx/" + result.hash;
 
     // succeeded
     if (receipt) {
@@ -201,8 +202,6 @@ const claim = async (wallet, tries = 1.0) => {
       const p = await connection.vault.principalBalance(wallet.address);
       const b = await connection.provider.getBalance(wallet.address);
       n = await connection.vault.checkNdv(wallet.address);
-      console.log(`Wallet${wallet["index"]}: success`);
-      console.log(`Vault Balance: ${balance} ARK`);
       const balance = ethers.utils.formatEther(p);
       const bal = ethers.utils.formatEther(b);
       ndv = ethers.utils.formatEther(n);
@@ -215,10 +214,11 @@ const claim = async (wallet, tries = 1.0) => {
         ndv: ndv,
         claim: true,
         tries: tries,
-        receipt: receipt,
+        url: url,
       };
 
-      // return status
+      console.log(`Wallet${wallet["index"]}: success`);
+      console.log(`Vault Balance: ${balance} ARK`);
       return success;
     }
   } catch (error) {
@@ -279,6 +279,7 @@ const compound = async (wallet, tries = 1.0) => {
       1,
       m
     );
+    const url = "https://bscscan.com/tx/" + result.hash;
 
     // get the principal balance currently in the vault
     const b = await connection.vault.principalBalance(wallet.address);
@@ -302,6 +303,7 @@ const compound = async (wallet, tries = 1.0) => {
         ndv: ndv,
         compound: true,
         tries: tries,
+        url: url,
         airdrop: drop,
       };
 
@@ -368,6 +370,7 @@ const airdrop = async (wallet, tries = 1.0) => {
       1,
       m
     );
+    const url = "https://bscscan.com/tx/" + result.hash;
 
     // succeeded
     if (airdropped) {
@@ -379,6 +382,7 @@ const airdrop = async (wallet, tries = 1.0) => {
         downline: addresses,
         airdrop: true,
         tries: tries,
+        url: url,
       };
 
       // return status

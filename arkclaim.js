@@ -232,10 +232,10 @@ const claim = async (wallet, tries = 1.0) => {
         index: wallet.index,
         wallet: w,
         compound: false,
-        error: error,
+        error: error.toString(),
       };
 
-      // return status
+      // return stats
       return failure;
     }
 
@@ -321,7 +321,7 @@ const compound = async (wallet, tries = 1.0) => {
         index: wallet.index,
         wallet: w,
         compound: false,
-        error: error,
+        error: error.toString(),
       };
 
       // return status
@@ -399,7 +399,7 @@ const airdrop = async (wallet, tries = 1.0) => {
         index: wallet.index,
         wallet: w,
         airdrop: false,
-        error: error,
+        error: error.toString(),
       };
 
       // return status

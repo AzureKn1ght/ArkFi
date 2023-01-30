@@ -184,7 +184,7 @@ const claim = async (wallet, tries = 1.0) => {
       56,
       44,
       0,
-      true,
+      false,
       false,
       false,
       overrideOptions

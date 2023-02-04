@@ -70,10 +70,10 @@ const initWallets = (n) => {
       downline: "",
     };
 
-    // allocate for a circular referral system
-    if (i === 1) wallet.referer = process.env["ADR_" + n];
+    // allocate for a circular referral system (skip nth wallet)
+    if (i === 1) wallet.referer = process.env["ADR_" + (n - 1)];
     else wallet.referer = process.env["ADR_" + (i - 1)];
-    if (i === n) wallet.downline = process.env["ADR_" + 1];
+    if (i >= n - 1) wallet.downline = process.env["ADR_" + 1];
     else wallet.downline = process.env["ADR_" + (i + 1)];
 
     wallets.push(wallet);
@@ -157,7 +157,7 @@ const ARKCompound = async () => {
   sendReport();
 };
 
-// Airdrop Individual Wallet 
+// Airdrop Individual Wallet
 const airdrop = async (wallet, tries = 1.0) => {
   const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
   try {

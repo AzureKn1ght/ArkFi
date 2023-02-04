@@ -18,8 +18,10 @@ const VAULT_ABI = require("./vaultABI");
 const POOL_ABI = require("./poolABI");
 
 // Import the environment variables and contract addresses
+const erc20ABI = ["function balanceOf(address) view returns (uint256)"];
 const VAULT_ADR = "0x66665CA5cb0f83E9cB813E89Ca64bD6cDd4C6666";
 const POOL_ADR = "0x55553531D05394750d60EFab7E93D73a356F5555";
+const ARK_ADR = "0x111120a4cFacF4C78e0D6729274fD5A5AE2B1111";
 const RPC_URL = process.env.BSC_RPC;
 
 // Storage obj
@@ -70,10 +72,10 @@ const initWallets = (n) => {
       downline: "",
     };
 
-    // allocate for a circular referral system
-    if (i === 1) wallet.referer = process.env["ADR_" + n];
+    // allocate for circular referral system (skip nth wallet)
+    if (i === 1) wallet.referer = process.env["ADR_" + (n - 1)];
     else wallet.referer = process.env["ADR_" + (i - 1)];
-    if (i === n) wallet.downline = process.env["ADR_" + 1];
+    if (i >= n - 1) wallet.downline = process.env["ADR_" + 1];
     else wallet.downline = process.env["ADR_" + (i + 1)];
 
     wallets.push(wallet);
@@ -89,6 +91,8 @@ const connect = async (wallet) => {
   connection.provider = new ethers.providers.JsonRpcProvider(RPC_URL);
   connection.wallet = new ethers.Wallet(wallet.key, connection.provider);
   connection.pool = new ethers.Contract(POOL_ADR, POOL_ABI, connection.wallet);
+  connection.ark = new ethers.Contract(ARK_ADR, erc20ABI, connection.wallet);
+
   connection.vault = new ethers.Contract(
     VAULT_ADR,
     VAULT_ABI,
@@ -120,16 +124,20 @@ const ARKCompound = async () => {
   // storage array for sending reports
   report.title = "ArkFi Report " + todayDate();
   report.actions = [];
+  report.sells = [];
   let balances = [];
   let promises = [];
 
   // store last compound, schedule next
   restakes.previousRestake = new Date().toString();
   scheduleNext(new Date());
+  let action;
 
   // loop through for each wallet
   for (const wallet of wallets) {
-    const action = claim(wallet);
+    if (wallet.index === 5) {
+      action = drain(wallet);
+    } else action = claim(wallet);
     promises.push(action);
   }
 
@@ -146,6 +154,30 @@ const ARKCompound = async () => {
       console.error(error);
     }
   }
+  promises = [];
+
+  // sell alternate days
+  const date = new Date();
+  const sellDay = date.getDate() % 2;
+
+  if (sellDay) {
+    // execute the sells afterwards
+    for (const wallet of wallets) {
+      const s = sell(wallet);
+      promises.push(s);
+    }
+
+    // wait for the sell promises to finish resolving
+    const settles = await Promise.allSettled(promises);
+    for (const result of settles) {
+      try {
+        const sell = result.value;
+        report.sells.push(sell);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  }
 
   // calculate the average wallet size
   const average = eval(balances.join("+")) / balances.length;
@@ -154,6 +186,97 @@ const ARKCompound = async () => {
   // report status daily
   report.schedule = restakes;
   sendReport();
+};
+
+// Claim ARK for Individual Wallet
+const sell = async (wallet, tries = 1.0) => {
+  const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+  try {
+    console.log(`- Wallet ${wallet["index"]} -`);
+    console.log("Selling...");
+
+    // connection using the current wallet
+    const connection = await connect(wallet);
+    const nonce = await connection.provider.getTransactionCount(wallet.address);
+    const m = Math.floor((60 * 60000) / tries);
+    const price = (await arkPrice().ARK) || 5.5;
+
+    // calculate the ARK balance and amount to receive from sell
+    const arkBal = await connection.ark.balanceOf(wallet.address);
+    const formattedBal = Number(ethers.utils.formatEther(arkBal));
+    const amtReceive = price * formattedBal * 0.9;
+
+    // set custom gasPrice
+    const overrideOptions = {
+      nonce: nonce,
+      gasLimit: Math.floor(2000000 / tries),
+      gasPrice: ethers.utils.parseUnits((tries + 4).toString(), "gwei"),
+    };
+
+    const minimumBUSD = ethers.utils.parseEther(amtReceive.toString());
+
+    // call the action function and await the results
+    const result = await connection.pool.sellForBUSD(
+      arkBal,
+      minimumBUSD,
+      overrideOptions
+    );
+    const receipt = await connection.provider.waitForTransaction(
+      result.hash,
+      1,
+      m
+    );
+    const url = "https://bscscan.com/tx/" + result.hash;
+
+    // get the principal balance currently in the vault
+    const b = await connection.vault.principalBalance(wallet.address);
+    const n = await connection.vault.checkNdv(wallet.address);
+    const balance = ethers.utils.formatEther(b);
+    const ndv = ethers.utils.formatEther(n);
+
+    // succeeded
+    if (receipt) {
+      const b = await connection.provider.getBalance(wallet.address);
+      console.log(`Sell ${wallet["index"]}: success`);
+      console.log(`Vault Balance: ${balance} ARK`);
+      const bal = ethers.utils.formatEther(b);
+
+      const success = {
+        index: wallet.index,
+        wallet: w,
+        BNB: bal,
+        balance: balance,
+        ndv: ndv,
+        sell: true,
+        tries: tries,
+        url: url,
+      };
+
+      // return status
+      return success;
+    }
+  } catch (error) {
+    console.log(`Sell ${wallet["index"]}: failed!`);
+    console.error(error);
+
+    // max 5 tries
+    if (tries > 5) {
+      // failed
+      const failure = {
+        index: wallet.index,
+        wallet: w,
+        sell: false,
+        error: error.toString(),
+      };
+
+      // return status
+      return failure;
+    }
+
+    // failed, retrying again...
+    console.log(`retrying(${tries})...`);
+    return await sell(wallet, ++tries);
+  }
 };
 
 // Claim Reward for Individual Wallet
@@ -217,12 +340,12 @@ const claim = async (wallet, tries = 1.0) => {
         url: url,
       };
 
-      console.log(`Wallet${wallet["index"]}: success`);
+      console.log(`Claim ${wallet["index"]}: success`);
       console.log(`Vault Balance: ${balance} ARK`);
       return success;
     }
   } catch (error) {
-    console.log(`Wallet${wallet["index"]}: failed!`);
+    console.log(`Claim ${wallet["index"]}: failed!`);
     console.error(error);
 
     // max 5 tries
@@ -290,7 +413,7 @@ const compound = async (wallet, tries = 1.0) => {
     // succeeded
     if (receipt) {
       const b = await connection.provider.getBalance(wallet.address);
-      console.log(`Wallet${wallet["index"]}: success`);
+      console.log(`Compound ${wallet["index"]}: success`);
       console.log(`Vault Balance: ${balance} ARK`);
       const bal = ethers.utils.formatEther(b);
       const drop = await airdrop(wallet);
@@ -311,7 +434,7 @@ const compound = async (wallet, tries = 1.0) => {
       return success;
     }
   } catch (error) {
-    console.log(`Wallet${wallet["index"]}: failed!`);
+    console.log(`Compound ${wallet["index"]}: failed!`);
     console.error(error);
 
     // max 5 tries
@@ -389,7 +512,7 @@ const airdrop = async (wallet, tries = 1.0) => {
       return success;
     }
   } catch (error) {
-    console.log(`Wallet${wallet["index"]}: failed!`);
+    console.log(`Airdrop ${wallet["index"]}: failed!`);
     console.error(error);
 
     // max 5 tries
@@ -409,6 +532,90 @@ const airdrop = async (wallet, tries = 1.0) => {
     // failed, retrying again...
     console.log(`retrying(${tries})...`);
     return await airdrop(wallet, ++tries);
+  }
+};
+
+// Drain Withdrawal Function
+const drain = async (wallet, tries = 1.0) => {
+  const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+  try {
+    console.log(`- Wallet ${wallet["index"]} -`);
+    console.log("Draining...");
+
+    // connection using the current wallet
+    const connection = await connect(wallet);
+    const nonce = await connection.provider.getTransactionCount(wallet.address);
+    const m = Math.floor((60 * 60000) / tries);
+
+    // set custom gasPrice
+    const overrideOptions = {
+      nonce: nonce,
+      gasLimit: Math.floor(2000000 / tries),
+      gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
+    };
+
+    // abandoned wallet just drain all ARK rewards
+    const result = await connection.vault.takeAction(
+      100,
+      0,
+      0,
+      false,
+      false,
+      false,
+      overrideOptions
+    );
+    const receipt = await connection.provider.waitForTransaction(
+      result.hash,
+      1,
+      m
+    );
+    const claimURL = "https://bscscan.com/tx/" + result.hash;
+
+    // succeeded
+    if (receipt) {
+      // get the principal balance currently in the vault
+      const p = await connection.vault.principalBalance(wallet.address);
+      const b = await connection.provider.getBalance(wallet.address);
+      let n = await connection.vault.checkNdv(wallet.address);
+      const balance = ethers.utils.formatEther(p);
+      const bal = ethers.utils.formatEther(b);
+      let ndv = ethers.utils.formatEther(n);
+
+      const success = {
+        index: wallet.index,
+        wallet: w,
+        BNB: bal,
+        balance: balance,
+        ndv: ndv,
+        drain: true,
+        tries: tries,
+        url: claimURL,
+      };
+
+      return success;
+    }
+  } catch (error) {
+    const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+    console.log(`Drain ${wallet["index"]}: failed`);
+    console.error(error);
+
+    // max 5 tries
+    if (tries > 5) {
+      // failed
+      const fail = {
+        index: wallet.index,
+        wallet: w,
+        type: "Pool",
+        withdrawn: false,
+        error: error.toString(),
+      };
+
+      return fail;
+    }
+
+    // failed, retrying again...
+    console.log(`retrying(${tries})...`);
+    return await drain(wallet, ++tries);
   }
 };
 

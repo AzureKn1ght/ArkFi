@@ -156,9 +156,9 @@ const ARKCompound = async () => {
   }
   promises = [];
 
-  // sell alternate days
-  const date = new Date();
-  const sellDay = date.getDate() % 2;
+  // sell only on alternate days
+  const evenDate = new Date().getDate % 2;
+  const sellDay = evenDate === 0;
 
   if (sellDay) {
     // execute the sells afterwards
@@ -266,6 +266,7 @@ const sell = async (wallet, tries = 1.0) => {
         index: wallet.index,
         wallet: w,
         sell: false,
+        tries: tries,
         error: error.toString(),
       };
 
@@ -443,6 +444,7 @@ const compound = async (wallet, tries = 1.0) => {
       const failure = {
         index: wallet.index,
         wallet: w,
+        tries: tries,
         compound: false,
         error: error.toString(),
       };
@@ -521,6 +523,7 @@ const airdrop = async (wallet, tries = 1.0) => {
       const failure = {
         index: wallet.index,
         wallet: w,
+        tries: tries,
         airdrop: false,
         error: error.toString(),
       };
@@ -606,6 +609,7 @@ const drain = async (wallet, tries = 1.0) => {
         index: wallet.index,
         wallet: w,
         type: "Pool",
+        tries: tries,
         withdrawn: false,
         error: error.toString(),
       };

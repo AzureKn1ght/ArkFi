@@ -19,7 +19,7 @@ You could run it on your desktop just using [Node.js](https://github.com/nodejs/
 
 ### ARK Compound
 ```
-pm2 start arkclaim.js -n "ARK"
+pm2 start drain.js -n "ARK"
 pm2 save
 
 ```

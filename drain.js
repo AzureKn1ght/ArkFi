@@ -147,8 +147,10 @@ const ARKCompound = async () => {
   promises = [];
 
   // sell only on alternate days
-  const date = new Date().getDate;
+  const date = new Date().getDate();
   const sellDay = date % 2;
+  report.sellDay = sellDay;
+  console.log(sellDay);
 
   if (sellDay) {
     // execute the sells afterwards

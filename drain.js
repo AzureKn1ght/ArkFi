@@ -116,7 +116,7 @@ const ARKCompound = async () => {
   // storage array for sending reports
   report.title = "ArkFi Report " + todayDate();
   report.actions = [];
-  report.sells = [];
+  report.bonds = [];
   let balances = [];
   let promises = [];
 
@@ -148,7 +148,7 @@ const ARKCompound = async () => {
 
   // sell only on alternate days
   const date = new Date().getDate();
-  const sellDay = date % 2;
+  const sellDay = date % 2 == 0;
   report.sellDay = sellDay;
   console.log(sellDay);
 
@@ -158,6 +158,7 @@ const ARKCompound = async () => {
       const s = sell(wallet);
       promises.push(s);
     }
+    report.sells = [];
 
     // wait for the sell promises to finish resolving
     const settles = await Promise.allSettled(promises);
@@ -168,6 +169,24 @@ const ARKCompound = async () => {
       } catch (error) {
         console.error(error);
       }
+    }
+  }
+  promises = [];
+
+  // loop through to claim bonds
+  for (const wallet of wallets) {
+    action = pool(wallet);
+    promises.push(action);
+  }
+
+  // wait for all the promises to finish resolving
+  const bonds = await Promise.allSettled(promises);
+  for (const result of bonds) {
+    try {
+      const bond = result.value;
+      report.bonds.push(bond);
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -349,6 +368,80 @@ const drain = async (wallet, tries = 1.0) => {
     // failed, retrying again...
     console.log(`retrying(${tries})...`);
     return await drain(wallet, ++tries);
+  }
+};
+
+// Pool Withdrawal Function
+const pool = async (wallet, tries = 1.0) => {
+  const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+  try {
+    console.log(`- Wallet ${wallet["index"]} -`);
+    console.log("Claim Bonds...");
+
+    // connection using the current wallet
+    const connection = await connect(wallet);
+    const nonce = await connection.provider.getTransactionCount(wallet.address);
+    const m = Math.floor((60 * 60000) / tries);
+
+    // set custom gasPrice
+    const overrideOptions = {
+      nonce: nonce,
+      gasLimit: Math.floor(2000000 / tries),
+      gasPrice: ethers.utils.parseUnits(tries.toString(), "gwei"),
+    };
+
+    // claim all the daily rewards from the Ark BOND pool
+    const result = await connection.pool.claimBondRewards(overrideOptions);
+    const receipt = await connection.provider.waitForTransaction(
+      result.hash,
+      1,
+      m
+    );
+    const claimURL = "https://bscscan.com/tx/" + result.hash;
+
+    // get the total balance locked in BOND pool
+    const b = await connection.vault.getBondValue(wallet.address);
+    const balance = ethers.utils.formatEther(b);
+
+    // succeeded
+    if (receipt) {
+      console.log(`BOND${wallet["index"]}: success`);
+      console.log(`Balance: ${balance} BUSD`);
+
+      const success = {
+        index: wallet.index,
+        wallet: w,
+        type: "Pool",
+        balance: balance,
+        withdrawn: true,
+        tries: tries,
+        url: claimURL,
+      };
+
+      return success;
+    }
+  } catch (error) {
+    console.log(`BOND${wallet["index"]}: failed`);
+    console.error(error);
+
+    // max 5 tries
+    if (tries > 5) {
+      // failed
+      const fail = {
+        index: wallet.index,
+        wallet: w,
+        type: "Pool",
+        withdrawn: false,
+        tries: tries,
+        error: error.toString(),
+      };
+
+      return fail;
+    }
+
+    // failed, retrying again...
+    console.log(`retrying(${tries})...`);
+    return await pool(wallet, ++tries);
   }
 };
 

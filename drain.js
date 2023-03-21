@@ -19,7 +19,7 @@ const POOL_ABI = require("./poolABI");
 
 // Import the environment variables and contract addresses
 const erc20ABI = ["function balanceOf(address) view returns (uint256)"];
-const VAULT_ADR = "0x66665CA5cb0f83E9cB813E89Ca64bD6cDd4C6666";
+const VAULT_ADR = "0xeB5f81A779BCcA0A19012d24156caD8f899F6452";
 const POOL_ADR = "0x55553531D05394750d60EFab7E93D73a356F5555";
 const ARK_ADR = "0x111120a4cFacF4C78e0D6729274fD5A5AE2B1111";
 const RPC_URL = process.env.BSC_RPC;

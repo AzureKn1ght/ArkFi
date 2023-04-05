@@ -328,17 +328,14 @@ const drain = async (wallet, tries = 1.0) => {
       // get the principal balance currently in the vault
       const p = await connection.vault.principalBalance(wallet.address);
       const b = await connection.provider.getBalance(wallet.address);
-      let m = await connection.vault.checkMaxPayout(wallet.address);
       const balance = ethers.utils.formatEther(p);
       const bal = ethers.utils.formatEther(b);
-      let max = ethers.utils.formatEther(m);
 
       const success = {
         index: wallet.index,
         wallet: w,
         BNB: bal,
         balance: balance,
-        max_payout: max,
         drain: true,
         tries: tries,
         url: claimURL,

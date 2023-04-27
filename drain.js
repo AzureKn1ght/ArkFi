@@ -24,6 +24,18 @@ const POOL_ADR = "0x55553531D05394750d60EFab7E93D73a356F5555";
 const ARK_ADR = "0x111120a4cFacF4C78e0D6729274fD5A5AE2B1111";
 const RPC_URL = process.env.BSC_RPC;
 
+// Import the details for swapping
+const swapABI = [
+  "function swapExactTokensForETH(uint256,uint256,address[],address,uint256)",
+  "function getAmountsOut(uint, address[]) public view returns (uint[])",
+  "function balanceOf(address) view returns (uint256)",
+];
+const addresses = {
+  BUSD: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+  WBNB: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+  router: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+};
+
 // Storage obj
 var restakes = {
   previousRestake: "",
@@ -88,6 +100,18 @@ const connect = async (wallet) => {
   connection.vault = new ethers.Contract(
     VAULT_ADR,
     VAULT_ABI,
+    connection.wallet
+  );
+
+  // Add pancakeswap contracts for swaps
+  connection.router = new ethers.Contract(
+    addresses.router,
+    swapABI,
+    connection.wallet
+  );
+  connection.busd = new ethers.Contract(
+    addresses.BUSD,
+    swapABI,
     connection.wallet
   );
 
@@ -245,6 +269,8 @@ const sell = async (wallet, tries = 1.0) => {
 
     // succeeded
     if (receipt) {
+      // swap BUSD to BNB
+      const swapBNB = await swapBUSD(wallet);
       const b = await connection.provider.getBalance(wallet.address);
       console.log(`Sell ${wallet["index"]}: success`);
       console.log(`Vault Balance: ${balance} ARK`);
@@ -257,6 +283,7 @@ const sell = async (wallet, tries = 1.0) => {
         sell: true,
         tries: tries,
         url: url,
+        swap: swapBNB,
       };
 
       // return status
@@ -442,6 +469,91 @@ const pool = async (wallet, tries = 1.0) => {
   }
 };
 
+// Swap BUSD to BNB for DCA and gass fees
+const swapBUSD = async (wallet, tries = 1.0) =>
+{
+  const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
+  try
+  {
+    // connection using the current wallet
+    const connection = await connect(wallet);
+
+    // swap details needed for the transaction
+    const path = [addresses.BUSD, addresses.WBNB];
+    const deadline = Date.now() + 1000 * 60 * 5;
+
+    // get the wallet balance amount of BUSD to swap to BNB
+    const bal = await connection.busd.balanceOf(wallet.address);
+    const rs = await connection.router.getAmountsOut(bal, path);
+    const ex = rs[rs.length - 1];
+
+    // calculate expected amount 1% slippage
+    const amountOutMin = ex.sub(ex.div(100));
+
+    // log details
+    const swap = {
+      wbnbAmt: ethers.utils.formatEther(amountOutMin),
+      busdAmt: ethers.utils.formatEther(bal),
+    };
+    console.log(swap);
+
+    // call the BUSD to BNB swap function and await the results
+    const result = await connection.router.swapExactTokensForETH(
+      bal,
+      amountOutMin,
+      path,
+      wallet.address,
+      deadline
+    );
+
+    // get transaction details, and wait for completion
+    const url = "https://bscscan.com/tx/" + result.hash;
+    const receipt = await result.wait();
+
+    // succeeded
+    if (receipt)
+    {
+      const b = await connection.provider.getBalance(wallet.address);
+      console.log(`Wallet${ wallet["index"] }: success`);
+      const bal = ethers.utils.formatEther(b);
+
+      const success = {
+        index: wallet.index,
+        wallet: w,
+        BNB: bal,
+        swapToBNB: true,
+        tries: tries,
+        swap: swap,
+        url: url,
+      };
+
+      return success;
+    }
+  } catch (error)
+  {
+    console.log(`Wallet${ wallet["index"] }: failed!`);
+    console.error(error);
+
+    // max 5 tries
+    if (tries > 5)
+    {
+      // failed
+      const failure = {
+        index: wallet.index,
+        wallet: w,
+        swapToBNB: false,
+        err: error.toString(),
+      };
+
+      return failure;
+    }
+
+    // failed, retrying again...
+    console.log(`retrying(${ tries })...`);
+    return await swapBUSD(wallet, ++tries);
+  }
+};
+
 // Job Scheduler Function
 const scheduleNext = async (nextDate) => {
   // set next job to be 24hrs from now
@@ -476,10 +588,12 @@ const arkPrice = async () => {
 
     // get the price of Ark from pool
     const rawPrice = await connection.pool.getCurrentPriceInUSD();
+    const b = await connection.busd.balanceOf(POOL_ADR);
+    const bal = ethers.utils.formatEther(b) + " BUSD";
     let price = ethers.utils.formatEther(rawPrice);
     price = Number(price).toFixed(2);
 
-    return { ARK: price };
+    return { ARK: price, ILC: bal };
   } catch (error) {
     console.error(error);
     return null;

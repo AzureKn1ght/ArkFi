@@ -140,7 +140,7 @@ const ARKCompound = async () => {
   // storage array for sending reports
   report.title = "ArkFi Report " + todayDate();
   report.actions = [];
-  report.bonds = [];
+  report.bonds = ["BONDS EXITED FOR ILC SAFETY"];
   let balances = [];
   let promises = [];
 
@@ -197,6 +197,7 @@ const ARKCompound = async () => {
   }
   promises = [];
 
+  /*POOL DECOMISSIONED DUE TO ILC DROP
   // loop through to claim bonds
   for (const wallet of wallets) {
     action = pool(wallet);
@@ -213,6 +214,7 @@ const ARKCompound = async () => {
       console.error(error);
     }
   }
+  */
 
   // calculate the average wallet size
   const average = eval(balances.join("+")) / balances.length;
@@ -470,11 +472,9 @@ const pool = async (wallet, tries = 1.0) => {
 };
 
 // Swap BUSD to BNB for DCA and gass fees
-const swapBUSD = async (wallet, tries = 1.0) =>
-{
+const swapBUSD = async (wallet, tries = 1.0) => {
   const w = wallet.address.slice(0, 5) + "..." + wallet.address.slice(-6);
-  try
-  {
+  try {
     // connection using the current wallet
     const connection = await connect(wallet);
 
@@ -511,10 +511,9 @@ const swapBUSD = async (wallet, tries = 1.0) =>
     const receipt = await result.wait();
 
     // succeeded
-    if (receipt)
-    {
+    if (receipt) {
       const b = await connection.provider.getBalance(wallet.address);
-      console.log(`Wallet${ wallet["index"] }: success`);
+      console.log(`Wallet${wallet["index"]}: success`);
       const bal = ethers.utils.formatEther(b);
 
       const success = {
@@ -529,14 +528,12 @@ const swapBUSD = async (wallet, tries = 1.0) =>
 
       return success;
     }
-  } catch (error)
-  {
-    console.log(`Wallet${ wallet["index"] }: failed!`);
+  } catch (error) {
+    console.log(`Wallet${wallet["index"]}: failed!`);
     console.error(error);
 
     // max 5 tries
-    if (tries > 5)
-    {
+    if (tries > 5) {
       // failed
       const failure = {
         index: wallet.index,
@@ -549,7 +546,7 @@ const swapBUSD = async (wallet, tries = 1.0) =>
     }
 
     // failed, retrying again...
-    console.log(`retrying(${ tries })...`);
+    console.log(`retrying(${tries})...`);
     return await swapBUSD(wallet, ++tries);
   }
 };

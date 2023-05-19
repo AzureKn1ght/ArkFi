@@ -42,6 +42,7 @@ var restakes = {
   nextRestake: "",
 };
 var report = {};
+var savePrice;
 
 // Main Function
 const main = async () => {
@@ -236,12 +237,12 @@ const sell = async (wallet, tries = 1.0) => {
     const connection = await connect(wallet);
     const nonce = await connection.provider.getTransactionCount(wallet.address);
     const m = Math.floor((60 * 60000) / tries);
-    const price = (await arkPrice().ARK) || 5.5;
+    const price = (await arkPrice().ARK) || savePrice;
 
     // calculate the ARK balance and amount to receive from sell
     const arkBal = await connection.ark.balanceOf(wallet.address);
     const formattedBal = Number(ethers.utils.formatEther(arkBal));
-    const amtReceive = price * formattedBal * 0.9;
+    const amtReceive = price * formattedBal * 0.55;
 
     // set custom gasPrice
     const overrideOptions = {
@@ -589,6 +590,7 @@ const arkPrice = async () => {
     const bal = ethers.utils.formatEther(b) + " BUSD";
     let price = ethers.utils.formatEther(rawPrice);
     price = Number(price).toFixed(2);
+    savePrice = price;
 
     return { ARK: price, ILC: bal };
   } catch (error) {

@@ -40,6 +40,7 @@ const addresses = {
 var restakes = {
   previousRestake: "",
   nextRestake: "",
+  count: 0,
 };
 var report = {};
 var savePrice;
@@ -57,6 +58,7 @@ const main = async () => {
     // not first launch, check data
     if ("nextRestake" in storedData) {
       const nextRestake = new Date(storedData.nextRestake);
+      restakes["count"] = new Number(storedData["count"]);
 
       // restore claims schedule
       if (nextRestake > new Date()) {
@@ -147,6 +149,8 @@ const ARKCompound = async () => {
 
   // store last compound, schedule next
   restakes.previousRestake = new Date().toString();
+  const t = restakes["count"];
+  restakes["count"] = t + 1;
   scheduleNext(new Date());
   let action;
 
@@ -171,9 +175,8 @@ const ARKCompound = async () => {
   }
   promises = [];
 
-  // sell only on alternate days
-  const date = new Date().getDate();
-  const sellDay = date % 2 == 0;
+  // Sell on every 3rd time
+  const sellDay = t % 3 == 0;
   report.sellDay = sellDay;
   console.log(sellDay);
 

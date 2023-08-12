@@ -176,7 +176,7 @@ const ARKCompound = async () => {
   promises = [];
 
   // Sell on every 3rd time
-  const sellDay = t % 3 == 0;
+  const sellDay = t % 5 == 0;
   report.sellDay = sellDay;
   console.log(sellDay);
 
